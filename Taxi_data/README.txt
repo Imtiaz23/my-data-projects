@@ -7,3 +7,6 @@ Data dictionary can be found in https://www.nyc.gov/assets/tlc/downloads/pdf/dat
 Any related data files used here can also be found in the above domain.
 
 Purpose is to exercise Data science skills. This includes data exploration, Comprehension of the data, Data cleaning, visual and drawing out insights from the data.
+
+A brief walkthrough on this project can be found at
+https://youtu.be/oY2k5D8W8EE
