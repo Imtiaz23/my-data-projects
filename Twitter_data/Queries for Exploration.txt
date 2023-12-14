@@ -1,0 +1,56 @@
+1)The top five most used sources (app or site) to post or share a tweet. For each source return the 
+number of posts and the number of users that created tweets from that source.
+
+MATCH (s:Source)<-[:USING]-(t:Tweet)<-[:POSTS]-(u:User)
+WITH s, COUNT(t) AS num_posts, COLLECT(DISTINCT u) AS list_user
+RETURN s.displayName AS name_of_source, num_posts, SIZE(list_user) AS num_users
+ORDER BY num_posts DESC
+LIMIT 5;
+
+
+
+2)Top 3 users that have the highest number of tweets with a retweetCount greater than 50. For each 
+of these users show the number of popular tweets they have
+
+MATCH (t:Tweet)<-[:POSTS]-(u:User)
+WHERE t.retweetCount > 50
+WITH  COUNT(t) AS num_pop_posts, u
+ORDER BY num_pop_posts DESC
+LIMIT 3
+RETURN u.userName , num_pop_posts
+
+3)The shortest path connecting the User ‘luckyinsivan’ and the hashtag ‘imsosick’ using any 
+relationship type except :USING
+
+MATCH path = shortestPath(
+  (u:User {userName: 'luckyinsivan'})-[:MENTIONS | POSTS | CONTAINS | TAGS | RETWEETS *..50]-(h:Hashtag {text: 'imsosick'})
+)
+RETURN path;
+
+4) Modification to Schema
+MATCH (u:User)-[:POSTS]->(t:Tweet)-[:CONTAINS]->(l:Link)
+WITH u, l
+MERGE (u)-[:USES]-> (l)
+
+MATCH (s:Source)<-[:USING]-(t:Tweet)
+WITH s, t
+MATCH (t)-[:CONTAINS]-> (l:Link)
+WITH s, t, l
+MERGE (s)-[:USES]-> (l)
+
+5)Which users post the most links from linkedin, that is links from the domain "www.linkedin.com" or 
+"lnkd.in"
+
+MATCH (u:User)-[:USES]->(l:Link)
+WHERE l.expandedUrl =~ '.*linkedin.*|.*lnkd\\.in.*'
+WITH u, COUNT(l) AS linkCount
+ORDER BY linkCount DESC
+WITH COLLECT({user: u, count: linkCount}) AS userCounts, MAX(linkCount) AS maxLinks
+UNWIND userCounts AS uc
+WITH uc
+WHERE uc.count = maxLinksRETURN COLLECT(uc.user.userName) AS user_names, uc.count AS num_posts;
+
+
+
+
+

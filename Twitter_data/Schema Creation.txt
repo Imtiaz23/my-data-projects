@@ -1,0 +1,228 @@
+CALL apoc.periodic.iterate(
+'CALL apoc.load.json("cleaned_tweets.json") YIELD value',
+'WITH
+ value.object.id AS id,
+datetime({ epochMillis: apoc.date.parse(value.object.postedTime, "ms",
+"yyyy-MM-dd\'T\'HH:mm:ss.SSS\'Z\'")}) AS postedTimestamp
+,value.object.text AS text
+,value.object.twitter_lang AS language
+,value.object.retweetCount AS retweetCount
+,value.object.favoritesCount AS favoritesCount,
+value.object.verb AS verb
+WHERE verb = "post"
+MERGE (t:Tweet{id:id})
+ON CREATE SET
+ t.postedTimestamp = postedTimestamp
+,t.text = text
+,t.language = language
+,t.retweetCount = retweetCount
+,t.favoritesCount = favoritesCount
+,t.verb = verb
+',
+{batchSize:500})
+YIELD * ;
+
+
+CALL apoc.periodic.iterate(
+'CALL apoc.load.json("cleaned_tweets.json") YIELD value',
+'WITH
+ value.id AS id
+,datetime({ epochMillis: apoc.date.parse(value.postedTime, "ms",
+"yyyy-MM-dd\'T\'HH:mm:ss.SSS\'Z\'")}) AS postedTimestamp
+,value.text AS text
+,value.twitter_lang AS language
+,value.retweetCount AS retweetCount
+,value.favoritesCount AS favoritesCount
+,value.verb AS verb
+WHERE verb = "post"
+MERGE (t:Tweet{id:id})
+ON CREATE SET
+ t.postedTimestamp = postedTimestamp
+,t.text = text
+,t.language = language
+,t.retweetCount = retweetCount
+,t.favoritesCount = favoritesCount
+,t.verb = verb
+',
+{batchSize:500})
+YIELD * ;
+
+
+CALL apoc.periodic.iterate(
+'CALL apoc.load.json("cleaned_tweets.json") YIELD value',
+'WITH
+ value.id AS id
+,datetime({ epochMillis: apoc.date.parse(value.postedTime, "ms",
+"yyyy-MM-dd\'T\'HH:mm:ss.SSS\'Z\'")}) AS postedTimestamp
+,value.text AS text
+,value.twitter_lang AS language
+,value.retweetCount AS retweetCount
+,value.favoritesCount AS favoritesCount
+,value.verb AS verb
+WHERE verb = "share"
+MERGE (t:Tweet{id:id})
+ON CREATE SET
+ t.postedTimestamp = postedTimestamp
+,t.text = text
+,t.language = language
+,t.retweetCount = retweetCount
+,t.favoritesCount = favoritesCount
+,t.verb = verb
+',
+{batchSize:500})
+YIELD * ;
+
+
+CALL apoc.periodic.iterate(
+'CALL apoc.load.json("cleaned_tweets.json") YIELD value',
+'WITH
+ value.id AS id,
+ value.object.id AS objectid
+WHERE id <> objectid
+MATCH (tp:Tweet{id:objectid})
+MATCH (ts:Tweet{id:id})
+MERGE (ts) - [:RETWEETS] -> (tp)
+',
+{batchSize:500})
+YIELD * ;
+
+
+CALL apoc.periodic.iterate(
+    'CALL apoc.load.json("cleaned_tweets.json") YIELD value',
+    'WITH
+     value.link AS link
+    ,value.id AS id
+    ,value.twitter_entities.urls[0].expanded_url AS expandedUrl
+    MATCH(t:Tweet{id:id})
+    MERGE (l:Link{link:link})
+    ON CREATE SET
+    l.expandedUrl = expandedUrl
+    MERGE (t)-[:CONTAINS]->(l)',
+    {batchSize:500})
+    YIELD * ;
+
+    CALL apoc.periodic.iterate(
+        'CALL apoc.load.json("cleaned_tweets.json") YIELD value',
+        'WITH
+         value.object.link AS link
+        ,value.object.id AS id
+        ,value.object.twitter_entities.urls[0].expanded_url AS expandedUrl
+        MATCH(t:Tweet{id:id})
+        MERGE (l:Link{link:link})
+        ON CREATE SET
+        l.expandedUrl = expandedUrl
+        MERGE (t)-[:CONTAINS]->(l)',
+        {batchSize:500})
+        YIELD * ;
+
+        CALL apoc.periodic.iterate(
+'CALL apoc.load.json("cleaned_tweets.json") YIELD value',
+'WITH
+ value.generator.displayName AS displayName
+,value.id AS id
+MATCH(t:Tweet{id:id})
+MERGE (s:Source{displayName:displayName})
+MERGE (t)-[:USING]->(s)',
+{batchSize:500})
+YIELD * ;
+
+
+CALL apoc.periodic.iterate(
+'CALL apoc.load.json("cleaned_tweets.json") YIELD value',
+'WITH
+ value.object.generator.displayName AS displayName
+,value.object.id AS id
+MATCH(t:Tweet{id:id})
+MERGE (s:Source{displayName:displayName})
+MERGE (t)-[:USING]->(s)',
+{batchSize:500})
+YIELD * ;
+
+
+CALL apoc.periodic.iterate(
+  'CALL apoc.load.json("cleaned_tweets.json") YIELD value',
+  'WITH
+   value.id AS tweetId,
+   value.twitter_entities.hashtags AS hashtags
+   MATCH (t:Tweet{id: tweetId})
+   UNWIND hashtags AS hashtagData
+   MERGE (h:Hashtag{text: hashtagData.text})
+   MERGE (t)-[:TAGS]->(h)',
+  {batchSize: 500}
+)
+YIELD *;
+
+CALL apoc.periodic.iterate(
+  'CALL apoc.load.json("cleaned_tweets.json") YIELD value',
+  'WITH
+   value.object.id AS tweetId,
+   value.object.twitter_entities.hashtags AS hashtags
+   MATCH (t:Tweet{id: tweetId})
+   UNWIND hashtags AS hashtagData
+   MERGE (h:Hashtag{text: hashtagData.text})
+   MERGE (t)-[:TAGS]->(h)',
+  {batchSize: 500}
+)
+YIELD *;
+
+CALL apoc.periodic.iterate(
+  'CALL apoc.load.json("cleaned_tweets.json") YIELD value',
+  'WITH
+   value.id AS tweetId,
+   value.actor.id AS actorId,
+   value.actor.preferredUsername AS userName
+   MATCH (t:Tweet{id: tweetId})
+   MERGE (u:User{id: actorId, userName:userName})
+   MERGE (u)-[:POSTS]->(t)',
+  {batchSize: 500}
+)
+YIELD *;
+
+
+CALL apoc.periodic.iterate(
+  'CALL apoc.load.json("cleaned_tweets.json") YIELD value',
+  'WITH
+   value.object.id AS tweetId,
+   value.object.actor.id AS actorId,
+   value.object.actor.preferredUsername AS userName
+   MATCH (t:Tweet{id: tweetId})
+   MERGE (u:User{id: actorId, userName:userName})
+   MERGE (u)-[:POSTS]->(t)',
+  {batchSize: 500}
+)
+YIELD *;
+
+
+CALL apoc.periodic.iterate(
+  'CALL apoc.load.json("cleaned_tweets.json") YIELD value',
+  'WITH
+   value.id AS tweetId,
+   value.twitter_entities.user_mentions AS mentions
+   MATCH (t:Tweet{id: tweetId})
+   UNWIND mentions AS actor
+   MERGE (u:User{id:actor.id_str, userName:actor.screen_name})
+   MERGE (t)-[:MENTIONS]->(u)',
+  {batchSize: 500}
+)
+YIELD *;
+
+
+CALL apoc.periodic.iterate(
+  'CALL apoc.load.json("cleaned_tweets.json") YIELD value',
+  'WITH
+   value.object.id AS tweetId,
+   value.object.twitter_entities.user_mentions AS mentions
+   MATCH (t:Tweet{id: tweetId})
+   UNWIND mentions AS actor
+   MERGE (u:User{id:actor.id_str, userName:actor.screen_name})
+   MERGE (t)-[:MENTIONS]->(u)',
+  {batchSize: 500}
+)
+YIELD *;
+
+
+CREATE CONSTRAINT UniqueTweetID ON (t:Tweet) ASSERT t.id IS UNIQUE
+CREATE CONSTRAINT UniqueUserID ON (u:User) ASSERT u.id IS UNIQUE
+
+
+
