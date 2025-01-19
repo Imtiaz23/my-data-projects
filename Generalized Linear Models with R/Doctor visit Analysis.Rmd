@@ -1,0 +1,261 @@
+---
+title: "Assignment3-47506067"
+author: "Imtiaz Ahmed"
+date: "2023-10-28"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, warning=FALSE, include=FALSE}
+library(ISwR)
+library(tidyverse)
+library(distr)
+library(GGally)
+library(car)
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+library(gamlss)
+library(ggmosaic)
+library(janitor)
+library(VGAM)
+library(geepack)
+```
+
+
+```{r echo=FALSE, warning=FALSE}
+doc_data <- read.csv('doc_visits.csv', header = TRUE)
+
+```
+
+Q1(a)
+
+```{r echo=FALSE, warning=FALSE}
+ggplot(doc_data) +
+geom_bar(aes(x = doc_visits))
+
+```
+
+```{r echo=FALSE, warning=FALSE}
+ggplot(doc_data) +
+geom_bar(aes(x=doc_visits)) +
+facet_grid(cols = vars(age50))
+```
+The count plots convincingly show that there are a lot of zero values for doctor visits. Especially for age<50 group. A zero-inflated models should be considered for this case.
+
+Q1(b)
+
+```{r echo=FALSE, warning=FALSE}
+par(mfrow=c(1,2))
+p1<-ggplot(data.frame(doc_data), aes(x=schooling)) +
+  geom_histogram(binwidth=3, fill="blue") +
+  labs(title="Histogram of schooling", x="schooling") +
+  theme_minimal()
+p2<-ggplot(data.frame(doc_data), aes(sample = schooling)) +
+  geom_qq() +
+  geom_qq_line(color = "red", lwd = 2) +
+  labs(title = "Q-Q Plot of schooling") +
+  theme_minimal()
+p1+ p2
+```
+
+Schooling looks to be right skewed. The q-q plot shows similar issue with the curve.
+```{r echo=FALSE, warning=FALSE}
+GGally::ggpairs(doc_data)
+```
+
+There appears to be negative correlation between health and doc_visits. as intuitively understood, high health satisfaction score results in lower doc_visits.age<50 overall has less doc_visits compared to age>50.
+```{r echo=FALSE, warning=FALSE}
+model <- gamlss(doc_visits ~ health + age50 + schooling, family = "ZINBI", data = doc_data)
+```
+
+```{r echo=FALSE, warning=FALSE}
+best_model <- stepGAIC(model, method="backward")
+```
+
+```{r echo=FALSE, warning=FALSE}
+summary(best_model)
+```
+
+```{r echo=FALSE, warning=FALSE}
+plot(best_model)
+```
+
+The quantile residuals appear to be normally distributed so the model is good.
+Fitted Model Equations:
+$$ Y_i \sim ZINB(\mu_i,\sigma,\nu_i),  i = 1,...,300 $$
+$$ log(\mu_i) = 2.56961 -0.26623x_i1 + 0.42067x_i2 + log(u_i) $$
+Where, $x_i1$ is health, $x_i2$ is 1 for age50=True, 0 for age50=False.
+$$ \sigma = e^(0.2165) = 1.24 $$
+$$ log(\pi_i\div(1-\pi_i)) = -36.04 $$
+
+Parameter Interpretation:
+The effect on mean number of doctor visits, for age more than 50 is exp(0.42067) = 1.52. So having age more than 50 increase the number of doctor visits by 52%.
+The effect on mean number of doctor visits, for 1 unit increase in health score is exp(-0.26623) = 0.766. So with each unit increase in health score decreases the number of doctor visits by 23%.
+
+Q2(a)
+
+```{r echo=FALSE, warning=FALSE}
+crash_data <- read.csv('crash.csv', header = TRUE)
+```
+
+```{r echo=FALSE, warning=FALSE}
+breaks <- c(135, 520, 900, 1255, 1575, 1860, Inf)
+labels <- c("1", "2", "3", "4", "5", "6")
+crash_data$ais <- cut(crash_data$head_ic, breaks = breaks, labels = labels, include.lowest = TRUE)
+table(crash_data$ais, useNA = "ifany")
+```
+It seems there are 12 missing values in the ais column.Category 5 and 6 have less than 20 observations. We will drop the observations with missing values and combine category 5 and 6 into 5.
+```{r echo=FALSE, warning=FALSE}
+crash_data <- na.omit(crash_data)
+crash_data$ais <- as.factor(as.character(crash_data$ais))
+levels(crash_data$ais)[levels(crash_data$ais) == "6"] <- "5"
+table(crash_data$ais, useNA = "ifany")
+```
+
+Q2(b)
+
+```{r echo=FALSE, warning=FALSE}
+ggplot(crash_data) +
+geom_mosaic(aes(x = product(ais, dp)), show.legend = FALSE) +
+xlab("dp") +
+ylab("ais")
+```
+
+```{r echo=FALSE, warning=FALSE}
+ordinal_model <- vglm(ordered(ais) ~ factor(dp) + weight,
+family = cumulative(parallel = TRUE), data = crash_data
+)
+summary(ordinal_model)
+```
+
+Model equation:
+Estimated model equation for j = 1 is,
+$$ ln(\gamma_1i/(1 - \gamma_1i)) = -0.7162 + 0.8800x_i1 - 0.00045x_i2 $$
+Where, j denotes the ordinal level of ais, $x_i1$ is 1 for dp=Passen, 0 for dp=Driver, $x_i2$ is weight.
+Parameter Interpretation:
+We have exp(0.88) = 2.41. So, for any ais group j = 1, 2, 3, 4 the
+odds of being in group less than j for passenger is 2.41 times the odds of being in group less than j for driver,
+for cars of same weight. This is an increase in the odds of 241%.
+We have exp(-0.00045) = 0.99. So, for every unit increase in weight, there
+is a 1% reduction in the odds of being in ais group less than j, for j = 1, 2, 3, 4.
+
+Q2(c)
+
+```{r echo=FALSE, warning=FALSE}
+nominal_model <- vglm(ais ~ factor(dp) + weight,
+family = multinomial(refLevel = "1"), data = crash_data
+)
+summary(nominal_model)
+```
+Model Equation for ais = 2:
+$$ ln(\pi_2i/\pi_1i) = 1.4317 - 1.5372x_i1 - 0.0001x_i2  $$
+Where, $x_i1$ is 1 for Passenger, 0 for driver, $x_i2$ is weight.
+Parameter Interpretation:
+the effect on the odds of linear fracture, relative to Headache or dizziness, of a one unit increase in weight,
+is exp(-0.0001) = 0.99, i.e. a 1% decrease in the odds of linear fracture with every unit increase in weight.
+the effect on the odds of linear fracture, relative to headache or dizziness, of being in passenger seat compared with being in driver seat, is exp(-1.5372)= 0.21 i.e. a 79%% decrease in the odds of linear fracture.
+
+Q3(a)
+
+```{r echo=FALSE, warning=FALSE}
+load("data.child.Rdata")
+```
+
+
+```{r echo=FALSE, warning=FALSE}
+child_gee_exch <- geeglm(Ht ~ Agedays + factor(Sex),
+id = Id,
+corstr = "exchangeable", data = data.child, family = gaussian()
+)
+child_gee_exch2 <- geeglm(Ht ~ factor(Sex) + Agedays + I(Agedays^2),
+id = Id,
+corstr = "exchangeable", data = data.child, family = gaussian()
+)
+child_gee_exch3 <- geeglm(Ht ~ factor(Sex) + Agedays + I(Agedays^2) + I(Agedays^3),
+id = Id,
+corstr = "exchangeable", data = data.child, family = gaussian()
+)
+QIC(child_gee_exch, child_gee_exch2, child_gee_exch3 )
+```
+```{r echo=FALSE, warning=FALSE}
+anova(child_gee_exch3)
+```
+All the covariates come out highly significant in the model child_gee_exch3.
+
+Q3(b)
+
+The response height is assumed to be normally distributed. Looking at the histogram also confirms that this assumption is fair.
+
+```{r echo=FALSE, warning=FALSE}
+ggplot(data.frame(data.child), aes(x=Ht)) +
+  geom_histogram(binwidth=10, fill="blue") +
+  labs(title="Histogram of height", x="Height") +
+  theme_minimal()
+```
+
+Q3(c)
+
+```{r echo=FALSE, warning=FALSE}
+summary(child_gee_exch3)
+```
+Fitted Model Equation:
+$$ log(\mu_ij) = 61.7 + 1.54s_j + 0.101x_i1 - 0.000134x_i2 + 0.0000000836x_i3$$
+Where, $s_j$ is 1 for female, 0 for male, $x_i1, x_i2, x_i3$ are the base, quadratic and cubic terms for Agedays respectively.
+
+Q3(d)
+
+The working correlation matrix $$ R_i = \begin{pmatrix}   1 & 0.66 & 0.66 \\ . & 1 & . \\ 0.66 & 0.66 & 1 \\ \end{pmatrix} $$
+And the correlation matrix is given by $$ R = \begin{pmatrix}   R_i & 0 & 0 \\ . & R_i & . \\ 0 & 0 & R_i \\ \end{pmatrix} $$
+
+Q3(e)
+
+The effect of age is cubic on height and highly significant. (p less than 2e-16)
+beta = 1.54 shows that females have an increase in height compared to males child.
+
+Q3(f)
+
+Since the data is longitudinal observations, ar1 correlation structure seems to be a reasonable case.We create a model with ar1 correlation structure and use QIC to compare.
+```{r echo=FALSE, warning=FALSE}
+child_gee_ar1 <- geeglm(Ht ~ factor(Sex) + Agedays + I(Agedays^2) + I(Agedays^3),
+id = Id,
+corstr = "ar1", data = data.child, family = gaussian()
+)
+QIC(child_gee_exch3, child_gee_ar1)
+```
+Previous model with exchange structure appears to be the better model based on QIC values.
+
+Q3(g)
+
+Linear Mixed Model:
+$$ Y_ij = \beta_0 + \beta_1 age + \beta_2 age^2 + \beta_3 age^3 + \gamma_1 sex1 + b_i + \epsilon_ij $$ 
+Where, $$ \beta_0  = intercept, $$
+$$ \beta_1, \beta_2, \beta_3  are growth over time (slope) $$
+$$ b_i  \sim N(0, \nu^2)  independently $$
+$$ \epsilon_ij \sim N(0, t^2)  independently $$
+
+Q3(j)
+
+```{r echo=FALSE, warning=FALSE}
+plot <- ggplot(data.child, aes(x = Agedays, y = Ht)) +
+geom_point() +
+geom_smooth(method = "lm",
+formula = y ~ splines::bs(x, degree = 5),
+se = FALSE)
+plot
+```
+
+Q3(k)
+
+Looking at the scatterplot, the linear growth model seems to be appropriate because it seems like for each child, the 
+growth is approximately linear.
+
+Q3(l) 
+
+There is a bit of curve in the spline, this suggests higher order form being present in the model. so Agedays 
+should be tried in quadratic and cubic form in the model.
