@@ -1,0 +1,248 @@
+---
+title: "Report 1"
+author: "Imtiaz Ahmed 47506067"
+date: "2024-03-26"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE,warning=FALSE, include=FALSE}
+library(ISwR)
+library(tidyverse)
+library(distr)
+library(GGally)
+library(car)
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+library(gamlss)
+library(ggmosaic)
+library(janitor)
+library(VGAM)
+library(geepack)
+```
+# Question 1 (a)
+here, we assume uniform prior, which means prior ~ Beta(1,1). The likelihood is 
+$$ P(y/\theta) \sim \theta^y (1 - \theta)^{n-y} $$
+So the posterior 
+$$ P(\theta/y) \sim \beta(y+1,n-y+1) $$
+for player Russell Westbrook, y = 64, n = 75. So model is 
+$$ \beta(65,12) $$
+for player James Harden, y = 27, n = 39. so model is
+$$ \beta(28,13) $$
+for player Kawhi Leonard, y = 55, n = 63. so model is
+$$ \beta(56,9) $$
+For player LeBron James, y = 72, n = 95. so model is
+$$ \beta(73,24) $$
+For player Isaiah Thomas, y = 75, n = 83. so model is
+$$ \beta(76, 9) $$
+For player Stephen Curry, y = 24, n = 26. so model is
+$$ \beta(25,3) $$
+For player Giannis Antetokounmpom y = 28, n = 41. so model is
+$$ \beta(29,14) $$
+For player John Wall, y = 66, n = 82. so model is
+$$ \beta(67, 17) $$
+For player Anthony Davis, y = 41, n = 55. so model is
+$$ \beta(42,15) $$
+For player Kevin Durant, y = 14, n = 17. so model is
+$$ \beta(15,4) $$
+\pagebreak
+
+# Question 1 (b)
+
+```{r echo=TRUE,warning=FALSE}
+players <- c("1","2","3","4","5","6","7","8","9","10")
+alpha <- c(65, 28, 56, 73, 76, 25, 29, 67, 42, 15)
+beta <- c(12, 13, 9, 24, 9, 3, 14, 17, 15, 4)
+
+df_list <- lapply(1:length(players), function(i) {
+  p <- rbeta(1000, alpha[i], beta[i])
+  dens <- density(p)
+  data.frame(player = players[i], p = dens$x, density = dens$y)
+})
+
+df_all <- do.call(rbind, df_list)
+ggplot(df_all, aes(x = p, y = density, color = player)) +
+  geom_line() +
+  labs(title = "Distributions for Clutch Success Probabilities")
+```
+\pagebreak
+
+# Question 1 (c)
+
+```{r echo=TRUE,warning=FALSE}
+summary_df <- data.frame(Player = character(),
+                         PosteriorMedian = numeric(),
+                         Lowerbound = numeric(),
+                         Upperbound = numeric())
+
+
+for (i in 1:length(players)) {
+  posterior_median <- format(qbeta(0.5, alpha[i], beta[i]), nsmall = 3)
+  lowerCI <- format(qbeta(0.025, alpha[i], beta[i]), nsmall = 3)
+  upperCI <- format(qbeta(0.975, alpha[i], beta[i]), nsmall = 3)
+  summary_df <- rbind(summary_df, c(Player = players[i],
+                                     PosteriorMedian = posterior_median,
+                                     Lowerbound = lowerCI,
+                                     Upperbound = upperCI))
+}
+colnames(summary_df) <- c("Player", "PosteriorMedian", "Lower95CI", "Upper95CI")
+print(summary_df)
+```
+\pagebreak
+
+# Question 1 (d)
+
+```{r echo=TRUE,warning=FALSE}
+y <- c(64, 27, 55, 72, 75, 24, 28, 66, 41, 14)
+n <- c(75, 39, 63, 95, 83, 26, 41, 82, 55, 17)
+summary_df2 <- data.frame(Player = character(),
+                          PosteriorMedian = numeric(),
+                         Lowerbound = numeric(),
+                         Upperbound = numeric(),
+                          MAP = numeric(),
+                          PosteriorMean = numeric(),
+                          MLE = numeric())
+
+for (i in 1:length(players)) {
+  posterior_median <- format(qbeta(0.5, alpha[i], beta[i]), nsmall = 3)
+  lowerCI <- format(qbeta(0.025, alpha[i], beta[i]), nsmall = 3)
+  upperCI <- format(qbeta(0.975, alpha[i], beta[i]), nsmall = 3)
+  map_estimate <- format((alpha[i] - 1) / (alpha[i] + beta[i] - 2), nsmall = 3)
+  posterior_mean <- format(alpha[i] / (alpha[i] + beta[i]), nsmall = 3)
+  mle_estimate <- format((y[i] / n[i]), nsmall = 3)
+  summary_df2 <- rbind(summary_df2, c(Player = players[i],
+                                      PosteriorMedian = posterior_median,
+                                     Lowerbound = lowerCI,
+                                     Upperbound = upperCI,
+                                       MAP = map_estimate,
+                                       PosteriorMean = posterior_mean,
+                                       MLE = mle_estimate))
+}
+
+colnames(summary_df2) <- c("Player", "PosteriorMedian", "Lower95CI", "Upper95CI", "MAP", "PosteriorMean", "MLE")
+print(summary_df2)
+```
+# Question 1 (e)
+
+Only LeBron James has clutch percentage different compared overall percentage. This is identified by verifying overall percentage value is within credibility interval.
+
+\pagebreak
+
+# Question 1 (f)
+
+Here, instead of prior ~ beta(1,1) we consider beta(2,0.5).
+```{r echo=TRUE,warning=FALSE}
+summary_df_check <- data.frame(Player = character(),
+                         PosteriorMedian = numeric(),
+                         Lowerbound = numeric(),
+                         Upperbound = numeric())
+
+
+for (i in 1:length(players)) {
+  posterior_median <- format(qbeta(0.5, alpha[i] + 1, beta[i] - 0.5), nsmall = 3)
+  lowerCI <- format(qbeta(0.025, alpha[i] + 1, beta[i] - 0.5), nsmall = 3)
+  upperCI <- format(qbeta(0.975, alpha[i] + 1, beta[i] - 0.5), nsmall = 3)
+  summary_df_check <- rbind(summary_df, c(Player = players[i],
+                                     PosteriorMedian = posterior_median,
+                                     Lowerbound = lowerCI,
+                                     Upperbound = upperCI))
+}
+colnames(summary_df_check) <- c("Player", "PosteriorMedian", "Lower95CI", "Upper95CI")
+print(summary_df_check)
+```
+Looking at the posterior Median after changing prior, we can conclude that the results are not sensitive to the prior.
+
+\pagebreak
+
+# Question 2 (a)
+
+```{r echo=TRUE,warning=FALSE}
+library(gtools)
+
+alpha <- c(1, 2, 1)
+theta <- c(0.2, 0.5, 0.3)
+pdf_value1 <- ddirichlet(theta, alpha)
+pdf_value1
+theta <- c(0.1, 0.45, 0.45)
+pdf_value2 <- ddirichlet(theta, alpha)
+pdf_value2
+samples <- rdirichlet(50, alpha)
+
+sums <- rowSums(samples)
+sums
+```
+So for each generated sample, the values add up to 1.
+
+# Question 2 (b)
+
+First we have, 
+$$ prior \sim \theta_A^{\alpha_A -1} \theta_B^{\alpha_B -1} \theta_C^{\alpha_C -1} $$
+The data comes from multinomial which means
+
+$$ likelihood \sim \theta_A^{y_A} \theta_B^{y_B} \theta_C^{y_C} $$
+According to Bayes theorem, 
+$$ posterior \sim likelihood * prior $$
+So in this case,
+$$ posterior \sim \theta_A^{y_A} \theta_B^{y_B} \theta_C^{y_C} * \theta_A^{\alpha_A -1} \theta_B^{\alpha_B -1} \theta_C^{\alpha_C -1} $$
+
+we get,
+$$ posterior \sim \theta_A^{\alpha_A +y_A -1} \theta_B^{\alpha_B +y_B -1} \theta_C^{\alpha_C + y_C-1} $$
+This is essentially the density function of Dirichlet with updated parameters,
+$$ Dirichlet(\alpha_A+y_A, \alpha_B+y_B, \alpha_C+y_C) $$
+This means the posterior is also a Dirichlet distribution and the prior is conjugate.
+
+\pagebreak
+
+# Question 2 (c)
+
+here,
+$$ y_A = 56, y_B = 14, y_C = 30, \alpha_A = 1, \alpha_B = 2, \alpha_C = 1 $$
+so the posterior distribution is,
+$$ Dirichlet(1 + 56, 2 + 14, 1 + 30) = Dirichlet(57,16,31) $$
+```{r echo=TRUE,warning=FALSE}
+posterior_alpha <- c(57, 16, 31)
+posterior_samples <- rdirichlet(1000, posterior_alpha)
+
+prior_alpha <- c(1, 2, 1)
+prior_samples <- rdirichlet(1000, prior_alpha)
+
+posterior_data <- data.frame(posterior_samples)
+colnames(posterior_data) <- c("ThetaA", "ThetaB", "ThetaC")
+
+prior_data <- data.frame(prior_samples)
+colnames(prior_data) <- c("ThetaA", "ThetaB", "ThetaC")
+
+ggplot(posterior_data, aes(x = value)) +
+  geom_density(aes(x = ThetaA, color = "ThetaA")) +
+  geom_density(aes(x = ThetaB, color = "ThetaB")) +
+  geom_density(aes(x = ThetaC, color = "ThetaC")) +
+  labs(title = "Density of Posterior",y = "Density") +
+  scale_color_manual(values = c("ThetaA" = "blue", "ThetaB" = "red", "ThetaC" = "green")) +
+  guides(color = guide_legend(title = "Component"))
+```
+```{r echo=TRUE,warning=FALSE}
+
+ggplot(prior_data, aes(x = value)) +
+  geom_density(aes(x = ThetaA, color = "ThetaA")) +
+  geom_density(aes(x = ThetaB, color = "ThetaB")) +
+  geom_density(aes(x = ThetaC, color = "ThetaC")) +
+  labs(title = "Density of Prior", y = "Density") +
+  scale_color_manual(values = c("ThetaA" = "blue", "ThetaB" = "red", "ThetaC" = "green")) +
+  guides(color = guide_legend(title = "Component"))
+```
+We can see that compared to the prior, posterior reflects the proportions from the collected data. For example, ThetaC peaks at around 0.3 in the graph which agrees with the proportion yC/n = 30/100 = 0.3.
+
+# Question 2 (d)
+
+```{r echo=TRUE,warning=FALSE}
+
+odds_ratio<-(posterior_samples[, 1] / (1 - posterior_samples[, 1])) / 
+                        (posterior_samples[, 2] / (1 - posterior_samples[, 2]))
+
+odds_ratio_interval <- quantile(odds_ratio, c(0.025, 0.975))
+odds_ratio_interval
+```

@@ -1,0 +1,262 @@
+---
+title: "Assignment 2"
+author: "Imtiaz Ahmed"
+date: "2024-04-24"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include=FALSE, warning=FALSE}
+library(ISwR)
+library(tidyverse)
+library(distr)
+library(GGally)
+library(car)
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+library(gamlss)
+library(ggmosaic)
+library(janitor)
+library(VGAM)
+library(geepack)
+library(rjags)
+library(coda)
+library(stats)
+```
+
+# Q1)a
+
+```{r echo=TRUE, warning=FALSE}
+school_data <- read.csv('schoolsworkinghours.csv', header = TRUE)
+
+ggplot(school_data, aes(x = hours)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "black") + 
+  facet_wrap(~ school, scales = "free_y") +
+  labs(title = "Histogram of Weekly Homework Hours by School", x = "Hours", y = "Count")
+```
+Looking at the histograms, working hours appear to come from normal distribution. There are some skewness seen in school 4.
+```{r echo=TRUE, warning=FALSE}
+means <- tapply(school_data$hours, school_data$school, mean)
+print(means)
+```
+```{r echo=TRUE, warning=FALSE}
+anova_test <- aov(hours ~ factor(school), data = school_data)
+summary(anova_test)
+```
+
+Looking at the mean and anova test result, we see that there are significant differences between the schools in working hours.
+
+```{r echo=TRUE, warning=FALSE}
+variances <- tapply(school_data$hours, school_data$school, var)
+print(variances)
+```
+Looking at the variances, they appear to be closer to each other indicating common variance.
+
+# Q1)b
+
+In this case, The likelihood is:
+$$ Y_ij | \mu_j , \sigma \sim N(\mu_j, \sigma) $$
+Where Y_ij is the data for student i in school j, mu_j denotes mean of ith school and sigma^2 denotes common variance.
+For the stage 1 prior distribution of means of schools, we assume normal distribution:
+$$ \mu_j | \mu, \tau \sim N(\mu, \tau) $$
+Here, mu represents overall mean and tau^2 is the variance between means of schools.
+
+stage 2 prior for mu_j:
+$$ \mu, \tau \sim \pi(\mu, \tau) $$
+Hyperparameters in this hierarchical model are mu, sigma^2 and tau^2.
+For mu:
+$$ \mu | \mu_0, \gamma_0 \sim N(\mu_0, \gamma_o) $$
+For sigma^2:
+$$ 1/\sigma^2 \sim gamma(a_\sigma, b_\sigma) $$
+For tau^2:
+$$ 1/\tau^2 \sim gamma(a_\tau, b_\tau) $$
+
+# Q1)c
+
+```{r echo=TRUE, warning=FALSE}
+modelString <- paste(
+  "model {",
+  "  ## Sampling",
+  "  for (i in 1:N) {",
+  "    y[i] ~ dnorm(mu_j[SchoolIndex[i]], invsigma2)",
+  "  }",
+  "",
+  "  ## Priors and hyperpriors",
+  "  for (j in 1:J) {",
+  "    mu_j[j] ~ dnorm(mu, invtau2)",
+  "  }",
+  "",
+  "  invsigma2 ~ dgamma(a_s, b_s)",
+  "  sigma <- sqrt(pow(invsigma2, -1))",
+  "",
+  "  mu ~ dnorm(mu0, g0)",
+  "  invtau2 ~ dgamma(a_t, b_t)",
+  "  tau <- sqrt(pow(invtau2, -1))",
+  "}",
+  sep = "\n"
+)
+
+y <- school_data$hours
+SchoolIndex <- school_data$school
+N <- length(y)
+J <- length(unique(SchoolIndex))
+the_data <- list("y" = y, "SchoolIndex" = SchoolIndex,
+"N" = N, "J" = J,
+"mu0" = 3, "g0" = 1,
+"a_t" = 1, "b_t" = 1,
+"a_s" = 1, "b_s" = 1)
+
+model <- jags.model(textConnection(modelString), data = the_data, n.chains = 1, n.adapt = 1000)
+update(model, 5000)
+
+posterior <- coda.samples(model, variable.names = c("mu", "tau", "mu_j", "sigma"), n.iter = 5000)
+
+```
+```{r echo=TRUE, warning=FALSE}
+params <- c("mu_j")
+samples <- coda.samples(model,
+variable.names=params,
+n.iter=20000, progress.bar="none")
+summary(samples)
+```
+```{r echo=TRUE, warning=FALSE}
+params <- c("mu_j")
+samples <- coda.samples(model,
+variable.names=params,
+n.iter=20000, progress.bar="none")
+plot(samples)
+```
+```{r echo=TRUE, warning=FALSE}
+params <- c("tau")
+samples <- coda.samples(model,
+variable.names=params,
+n.iter=20000, progress.bar="none")
+plot(samples)
+```
+Diagnostic plots suggest the model converged.
+
+# Q1)d
+
+We can use the following metric to compare variability between tau and sigma.
+$$ R = \tau^2/(\sigma^2 + \tau^2) $$
+```{r echo=TRUE, warning=FALSE}
+tau_draws <- as.mcmc(posterior, vars = "tau")
+sigma_draws <- as.mcmc(posterior, vars = "sigma")
+R <- tau_draws^2 / (tau_draws^2 + sigma_draws^2)
+quantile(R, c(0.025, 0.975))
+```
+This suggests that between school variability and within school variability are equivalent.
+
+# Q2)a
+
+The joint density is given by the following equation:
+$$ f(Y = y, \lambda) = P(Y = y | \lambda) * \pi(\lambda) $$
+Since Y given lambda comes from Poisson distribution,
+$$ P(Y = y |\lambda) = e^{-\lambda} \lambda^y \div y! $$
+So,
+$$ f(Y = y, \lambda) = (e^{-\lambda} \lambda^y \div y!) * (b^a \lambda^{a-1}e^{-b\lambda} \div \Gamma(a)) $$
+The equation simplifies to,
+$$ f(Y = y, \lambda) = b^a \lambda^{y+a-1}e^{-(b+1) \lambda} \div \Gamma(a)y! $$
+
+# Q2)b
+
+The conditional distribution of Y given lambda is as shown previously:
+$$ P(Y = y |\lambda) = e^{-\lambda} \lambda^y \div y! $$
+From the result of part a, we see that the posterior comes from a gamma distribution (conjugate prior) with parameters
+a* = a+ y, b* = b + 1
+So the conditional distribution of lambda is:
+$$ \pi(\lambda | Y = y) = (b+1)^{a + y}\lambda^{a+y-1}e^{-(b+1)\lambda} \div \Gamma(a+y) $$
+
+# Q2)c
+
+```{r echo=TRUE, warning=FALSE}
+Y <- rpois(1, 2)
+S <- 25000
+samples <- matrix(NA, S, 2)
+colnames(samples) <- c("lambda", "Y")
+
+lambda <- 2 
+a <- 2
+b <- 2
+
+for(s in 1:S){
+  Y <- rpois(1, lambda)
+
+  a_post <- a + Y  
+  b_post <- b + 1  
+  lambda <- rgamma(1, shape = a_post, rate = b_post)
+
+  samples[s, ] <- c(lambda, Y)
+}
+
+plot(samples, xlab = expression(lambda), ylab = "Y", main = "Samples from Gibbs Sampling")
+```
+
+# Q3)a
+
+Monte Carlo Simulation:
+
+```{r echo=TRUE, warning=FALSE}
+set.seed(2024)
+
+n <- 2000
+
+weights <- c(0.45, 0.1, 0.45)
+means <- c(-3, 0, 3)
+sds <- rep(1/3, 3)
+
+z <- sample(1:3, size = n, replace = TRUE, prob = weights)
+x_mc <- rnorm(n, mean = means[z], sd = sds[z])
+```
+Gibbs Sampling:
+```{r echo=TRUE, warning=FALSE}
+set.seed(2024)
+n <- 2000
+burn_in <- 500
+
+x <- numeric(n + burn_in)
+z <- integer(n + burn_in)
+x[1] <- rnorm(1)
+
+for (i in 2:(n + burn_in)) {
+  probabilities <- c(0.45 * dnorm(x[i-1], mean = -3, sd = 1/3),
+                     0.1 * dnorm(x[i-1], mean = 0, sd = 1/3),
+                     0.45 * dnorm(x[i-1], mean = 3, sd = 1/3))
+  z[i] <- sample(1:3, 1, prob = probabilities)
+  x[i] <- rnorm(1, mean = means[z[i]], sd = sds[z[i]])
+}
+
+x_final <- x[burn_in:n]
+```
+
+# Q3)b
+
+We can compare the two simulated draws using histogram.
+
+```{r echo=TRUE, warning=FALSE}
+hist(x_mc, breaks = 40, main = "Monte Carlo Simulation of Mixture Density")
+```
+
+```{r echo=TRUE, warning=FALSE}
+hist(x_final, breaks = 30, main = "Gibbs Sampling of Mixture Density")
+```
+Both sampling methods show that the samples from the posterior are normally distributed.
+
+```{r echo=TRUE, warning=FALSE}
+gibbs_mcmc <- mcmc(x_final)
+traceplot(gibbs_mcmc, main = "Trace Plot for Gibbs Sampling")
+```
+```{r echo=TRUE, warning=FALSE}
+plot(density(x_final), main = "Density Plot for Gibbs Sampling")
+```
+
+```{r echo=TRUE, warning=FALSE}
+autocorr.plot(gibbs_mcmc, main = "Autocorrelation Plot for Gibbs Sampling")
+```
+Looking at the traceplot and density plot, it seems gibbs sampling algorithm converged.There could be some issue in the middle part of the traces where the samples do not trace the entire range. The autocorrelation graph also supports the conclusion that gibbs sampling converged efficiently.
